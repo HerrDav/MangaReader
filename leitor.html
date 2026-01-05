@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Manga Reader</title>
+
+<style>
+body { margin:0; background:#0b0b0b; color:#fff; font-family:Arial }
+.top { position:sticky; top:0; background:#111; padding:10px; display:flex; gap:10px; align-items:center; z-index:10; flex-wrap:wrap }
+button { padding:8px 10px; cursor:pointer }
+.wrap { max-width:980px; margin:auto; padding:10px }
+img { width:100%; display:block; margin-bottom:10px; user-select:none }
+small { opacity:.7 }
+</style>
+</head>
+
+<body>
+<div class="top">
+  <strong id="info">Carregando…</strong>
+  <button id="mode">Modo: Página</button>
+  <button id="prev">◀</button>
+  <button id="next">▶</button>
+  <small id="status"></small>
+</div>
+
+<div class="wrap" id="content"></div>
+
+<!--<script src="pako.min.js"></script>-->
+<script src="https://cdn.jsdelivr.net/npm/pako@2.1.0/dist/pako.min.js"></script>
+<script>
+function b64ToBytes(b64) {
+  const pad = '='.repeat((4 - b64.length % 4) % 4);
+  const base = (b64 + pad).replace(/-/g,'+').replace(/_/g,'/');
+  const raw = atob(base);
+  return Uint8Array.from(raw, c => c.charCodeAt(0));
+}
+
+const params = new URLSearchParams(location.hash.substring(1));
+const payload = params.get('data');
+
+if (!payload) {
+  document.getElementById('content').innerHTML = 'Link inválido';
+  throw 'no data';
+}
+
+const text = new TextDecoder()
+  .decode(pako.ungzip(b64ToBytes(payload)));
+
+const pages = text.split('\n')
+  .map(x => x.trim())
+  .filter(x => x && (x.endsWith('.jpg') || x.endsWith('.png') || x.endsWith('.jpeg')));
+
+let idx = 0;
+let mode = localStorage.getItem('mode') || 'page';
+
+const content = document.getElementById('content');
+const status = document.getElementById('status');
+const info = document.getElementById('info');
+
+function render() {
+  content.innerHTML = '';
+  if (mode === 'scroll') {
+    pages.forEach(u => {
+      const img = document.createElement('img');
+      img.src = u;
+      content.appendChild(img);
+    });
+    status.textContent = `${pages.length} páginas`;
+  } else {
+    const img = document.createElement('img');
+    img.src = pages[idx];
+    img.onclick = () => window.innerWidth < 900 && next();
+    content.appendChild(img);
+    status.textContent = `Página ${idx+1}/${pages.length}`;
+  }
+}
+
+function next(){ if (idx < pages.length-1){ idx++; render(); } }
+function prev(){ if (idx > 0){ idx--; render(); } }
+
+document.getElementById('next').onclick = next;
+document.getElementById('prev').onclick = prev;
+document.getElementById('mode').onclick = () => {
+  mode = mode === 'page' ? 'scroll' : 'page';
+  localStorage.setItem('mode', mode);
+  render();
+};
+
+window.onkeydown = e => {
+  if (mode !== 'page') return;
+  if (e.key === 'ArrowRight') next();
+  if (e.key === 'ArrowLeft') prev();
+};
+
+info.textContent = `Leitor (${pages.length} páginas)`;
+render();
+</script>
+</body>
+</html>
