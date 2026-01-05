@@ -36,65 +36,115 @@ function b64ToBytes(b64) {
   return Uint8Array.from(raw, c => c.charCodeAt(0));
 }
 
+function isAllowedImage(url) {
+  const u = (url || '').trim().toLowerCase();
+  return u.endsWith('.jpg') || u.endsWith('.jpeg') || u.endsWith('.png');
+}
+
+const content = document.getElementById('content');
+const status  = document.getElementById('status');
+const info    = document.getElementById('info');
+const modeBtn = document.getElementById('mode');
+const prevBtn = document.getElementById('prev');
+const nextBtn = document.getElementById('next');
+
 const params = new URLSearchParams(location.hash.substring(1));
 const payload = params.get('data');
 
 if (!payload) {
-  document.getElementById('content').innerHTML = 'Link inválido';
-  throw 'no data';
+  content.innerHTML = 'Link inválido';
+  throw new Error('no data');
 }
 
-const text = new TextDecoder()
-  .decode(pako.ungzip(b64ToBytes(payload)));
+let text;
+try {
+  text = new TextDecoder().decode(pako.ungzip(b64ToBytes(payload)));
+} catch (e) {
+  content.innerHTML = 'Erro ao decodificar o link (#data inválido).';
+  throw e;
+}
 
-const pages = text.split('\n')
+// divide por \n ou \r\n e filtra extensões
+const pages = text
+  .split(/\r?\n+/)
   .map(x => x.trim())
-  .filter(x => x && (x.endsWith('.jpg') || x.endsWith('.png') || x.endsWith('.jpeg')));
+  .filter(Boolean)
+  .filter(isAllowedImage);
 
-let idx = 0;
-let mode = localStorage.getItem('mode') || 'page';
-
-const content = document.getElementById('content');
-const status = document.getElementById('status');
-const info = document.getElementById('info');
-
-function render() {
-  content.innerHTML = '';
-  if (mode === 'scroll') {
-    pages.forEach(u => {
-      const img = document.createElement('img');
-      img.src = u;
-      content.appendChild(img);
-    });
-    status.textContent = `${pages.length} páginas`;
-  } else {
-    const img = document.createElement('img');
-    img.src = pages[idx];
-    img.onclick = () => window.innerWidth < 900 && next();
-    content.appendChild(img);
-    status.textContent = `Página ${idx+1}/${pages.length}`;
-  }
+if (!pages.length) {
+  content.innerHTML = 'Nenhuma imagem válida encontrada (.jpg/.png).';
+  throw new Error('no pages');
 }
 
-function next(){ if (idx < pages.length-1){ idx++; render(); } }
-function prev(){ if (idx > 0){ idx--; render(); } }
+let idx  = 0;
+let mode = localStorage.getItem('mode') || 'page'; // 'page' | 'scroll'
 
-document.getElementById('next').onclick = next;
-document.getElementById('prev').onclick = prev;
-document.getElementById('mode').onclick = () => {
-  mode = mode === 'page' ? 'scroll' : 'page';
+function setHeader() {
+  info.textContent = `Leitor (${pages.length} páginas)`;
+  modeBtn.textContent = `Modo: ${mode === 'page' ? 'Página' : 'Scroll'}`;
+
+  // Em scroll, esconde navegação
+  prevBtn.style.display = (mode === 'page') ? '' : 'none';
+  nextBtn.style.display = (mode === 'page') ? '' : 'none';
+}
+
+function renderPage() {
+  content.innerHTML = '';
+  const img = document.createElement('img');
+  img.src = pages[idx];
+  img.draggable = false;
+  img.onclick = () => {
+    // no celular, clicar avança (somente no modo página)
+    if (window.innerWidth < 900) next();
+  };
+  content.appendChild(img);
+  status.textContent = `Página ${idx + 1}/${pages.length}`;
+}
+
+function renderScroll() {
+  content.innerHTML = '';
+  for (const u of pages) {
+    const img = document.createElement('img');
+    img.src = u;
+    img.draggable = false;
+    content.appendChild(img);
+  }
+  status.textContent = `${pages.length} páginas`;
+}
+
+function applyMode() {
+  setHeader();
+  if (mode === 'page') renderPage();
+  else renderScroll();
+}
+
+function next() {
+  if (mode !== 'page') return;
+  if (idx < pages.length - 1) { idx++; renderPage(); }
+}
+
+function prev() {
+  if (mode !== 'page') return;
+  if (idx > 0) { idx--; renderPage(); }
+}
+
+nextBtn.onclick = next;
+prevBtn.onclick = prev;
+
+modeBtn.onclick = () => {
+  mode = (mode === 'page') ? 'scroll' : 'page';
   localStorage.setItem('mode', mode);
-  render();
+  applyMode();
 };
 
-window.onkeydown = e => {
+window.onkeydown = (e) => {
   if (mode !== 'page') return;
   if (e.key === 'ArrowRight') next();
   if (e.key === 'ArrowLeft') prev();
 };
 
-info.textContent = `Leitor (${pages.length} páginas)`;
-render();
+// inicia
+applyMode();
 </script>
 </body>
 </html>
